@@ -12,11 +12,10 @@ function isConfigValid() {
         SUPABASE_CONFIG.url === 'https://your-project-ref.supabase.co' ||
         SUPABASE_CONFIG.url === 'https://YOUR_PROJECT_REF.supabase.co';
 
-    const isPlaceholderKey = !SUPABASE_CONFIG.anonKey ||
-        SUPABASE_CONFIG.anonKey.includes('YOUR_SUPABASE') ||
-        SUPABASE_CONFIG.anonKey.includes('your-anon-key') ||
-        SUPABASE_CONFIG.anonKey === 'YOUR_SUPABASE_ANON_KEY_HERE' ||
-        SUPABASE_CONFIG.anonKey.length < 20;
+    const isPlaceholderKey = !SUPABASE_CONFIG.publishableKey ||
+        SUPABASE_CONFIG.publishableKey.includes('YOUR_SUPABASE') ||
+        SUPABASE_CONFIG.publishableKey.includes('YOUR_KEY') ||
+        SUPABASE_CONFIG.publishableKey.length < 20;
 
     return !isPlaceholderUrl && !isPlaceholderKey;
 }
@@ -32,7 +31,7 @@ function initializeSupabase() {
         try {
             supabaseClient = window.supabase.createClient(
                 SUPABASE_CONFIG.url,
-                SUPABASE_CONFIG.anonKey
+                SUPABASE_CONFIG.publishableKey
             );
             // Listen for auth state changes
             supabaseClient.auth.onAuthStateChange((event, session) => {

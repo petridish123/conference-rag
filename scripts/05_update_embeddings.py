@@ -62,7 +62,10 @@ def main():
 
     # Connect to Supabase
     public_config, secrets = load_config()
-    client = create_client(public_config['SUPABASE_URL'], secrets['SUPABASE_SERVICE_KEY'])
+    secret_key = secrets.get('SUPABASE_SECRET_KEY') or secrets.get('SUPABASE_SERVICE_KEY')
+    if not secret_key:
+        raise KeyError('Add SUPABASE_SECRET_KEY to config.secret.json (or the legacy SUPABASE_SERVICE_KEY).')
+    client = create_client(public_config['SUPABASE_URL'], secret_key)
 
     # Truncate existing data and re-import everything
     print("\n" + "=" * 60)

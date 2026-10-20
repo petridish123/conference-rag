@@ -25,7 +25,9 @@ with open('config.secret.json', 'r') as f:
     secrets = json.load(f)
 
 SUPABASE_URL = public_config['SUPABASE_URL']
-SUPABASE_SERVICE_KEY = secrets['SUPABASE_SERVICE_KEY']
+SUPABASE_SECRET_KEY = secrets.get('SUPABASE_SECRET_KEY') or secrets.get('SUPABASE_SERVICE_KEY')
+if not SUPABASE_SECRET_KEY:
+    raise KeyError('Add SUPABASE_SECRET_KEY to config.secret.json (or the legacy SUPABASE_SERVICE_KEY).')
 SUPABASE_ACCESS_TOKEN = secrets['SUPABASE_ACCESS_TOKEN']
 SUPABASE_PROJECT_REF = secrets['SUPABASE_PROJECT_REF']
 
@@ -144,7 +146,7 @@ $$;
         return False
 
     # Verify table exists via PostgREST
-    client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
     for attempt in range(5):
         try:
             result = client.table('sentence_embeddings').select('id', count='exact').limit(1).execute()
