@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS sentence_embeddings (
 CREATE INDEX IF NOT EXISTS sentence_embeddings_talk_id_idx 
 ON sentence_embeddings(talk_id);
 
+-- Accelerate cosine-distance searches used by match_sentences().
+CREATE INDEX IF NOT EXISTS sentence_embeddings_embedding_hnsw_idx
+ON sentence_embeddings USING hnsw (embedding vector_cosine_ops);
+
 -- Enable Row Level Security
 ALTER TABLE sentence_embeddings ENABLE ROW LEVEL SECURITY;
 
@@ -83,6 +87,7 @@ AS $$
     sentence_embeddings.text,
     1 - (sentence_embeddings.embedding <=> query_embedding) as similarity
   FROM sentence_embeddings
+  WHERE sentence_embeddings.embedding IS NOT NULL
   ORDER BY sentence_embeddings.embedding <=> query_embedding
   LIMIT match_count;
 $$;
