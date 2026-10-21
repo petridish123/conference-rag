@@ -482,7 +482,7 @@ async function semanticSearch() {
         const embedding = await getEmbedding(query);
 
         // Step 2: Search for similar sentences
-        const results = await searchSentences(embedding);
+        const results = await searchSentences(embedding, query);
 
         if (!results || results.length === 0) {
             showResults('semantic', '<div class="no-results">No similar content found. Try a different query.</div>');
@@ -530,7 +530,12 @@ async function askQuestion() {
         const embedding = await getEmbedding(question);
 
         // Step 2: Search for similar sentences
-        const results = await searchSentences(embedding);
+        const results = await searchSentences(embedding, question);
+
+        if (!results || results.length === 0) {
+            showResults('rag', '<div class="no-results">No matching talk content found. Check the speaker name or try a different question.</div>');
+            return;
+        }
 
         // Step 3: Group by talk (with similarity scores and URLs)
         const topTalks = groupByTalk(results);
@@ -596,12 +601,13 @@ async function getEmbedding(text) {
 }
 
 // Search sentences using vector similarity
-async function searchSentences(embedding) {
+async function searchSentences(embedding, question = null) {
     if (!supabaseClient) throw new Error('Supabase not configured');
 
-    const { data, error } = await supabaseClient.rpc('match_sentences', {
+    const { data, error } = await supabaseClient.rpc('match_sentences_by_question', {
         query_embedding: embedding,
-        match_count: 20
+        match_count: 20,
+        question_text: question
     });
 
     if (error) throw new Error(`Database search failed: ${error.message}`);

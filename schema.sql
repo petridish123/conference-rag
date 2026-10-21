@@ -91,3 +91,47 @@ AS $$
   ORDER BY sentence_embeddings.embedding <=> query_embedding
   LIMIT match_count;
 $$;
+
+-- Similarity search for RAG that narrows results when the question
+-- contains a speaker name stored in sentence_embeddings.speaker.
+CREATE OR REPLACE FUNCTION match_sentences_by_question(
+  query_embedding vector(1536),
+  match_count int DEFAULT 20,
+  question_text text DEFAULT NULL
+)
+RETURNS TABLE (
+  id uuid,
+  talk_id uuid,
+  title text,
+  speaker text,
+  url text,
+  text text,
+  similarity float
+)
+LANGUAGE sql STABLE
+AS $$
+  WITH mentioned_speakers AS (
+    SELECT DISTINCT se.speaker
+    FROM sentence_embeddings AS se
+    WHERE se.speaker IS NOT NULL
+      AND btrim(se.speaker) <> ''
+      AND question_text IS NOT NULL
+      AND position(lower(btrim(se.speaker)) IN lower(question_text)) > 0
+  )
+  SELECT
+    se.id,
+    se.talk_id,
+    se.title,
+    se.speaker,
+    se.url,
+    se.text,
+    1 - (se.embedding <=> query_embedding) AS similarity
+  FROM sentence_embeddings AS se
+  WHERE se.embedding IS NOT NULL
+    AND (
+      NOT EXISTS (SELECT 1 FROM mentioned_speakers)
+      OR se.speaker IN (SELECT speaker FROM mentioned_speakers)
+    )
+  ORDER BY se.embedding <=> query_embedding
+  LIMIT match_count;
+$$;
