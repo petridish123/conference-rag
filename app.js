@@ -83,6 +83,11 @@ const ragBtn = document.getElementById('rag-btn');
 const ragResults = document.getElementById('rag-results');
 const ragStatus = document.getElementById('rag-status');
 
+const speakerRagInput = document.getElementById('speaker-rag-input');
+const speakerRagBtn = document.getElementById('speaker-rag-btn');
+const speakerRagResults = document.getElementById('speaker-rag-results');
+const speakerRagStatus = document.getElementById('speaker-rag-status');
+
 // ============================================
 // SETUP BANNER DETECTION
 // ============================================
@@ -352,14 +357,18 @@ async function checkSearchReadiness() {
         // --- 1 generate-answer call (only if semantic pipeline is ready) ---
         if (!semanticReady) {
             setSearchReady('rag', false);
+            setSearchReady('speaker-rag', false);
         } else {
             try {
                 const { data, error: fnError } = await supabaseClient.functions.invoke('generate-answer', {
                     body: { question: 'test', context_talks: [] }
                 });
-                setSearchReady('rag', !fnError || fnError.context?.status !== 404);
+                const ragReady = !fnError || fnError.context?.status !== 404;
+                setSearchReady('rag', ragReady);
+                setSearchReady('speaker-rag', ragReady);
             } catch {
                 setSearchReady('rag', false);
+                setSearchReady('speaker-rag', false);
             }
         }
     } catch (err) {
@@ -367,6 +376,7 @@ async function checkSearchReadiness() {
         setSearchReady('keyword', false);
         setSearchReady('semantic', false);
         setSearchReady('rag', false);
+        setSearchReady('speaker-rag', false);
     } finally {
         readinessCheckRunning = false;
     }
@@ -522,32 +532,62 @@ async function askQuestion() {
     const question = ragInput ? ragInput.value.trim() : '';
     if (!question || !supabaseClient) return;
 
+    runRagPipeline(question, 'rag', async (query) => {
+        const embedding = await getEmbedding(query);
+        return searchSentences(embedding, query);
+    }, 'No matching talk content found. Try a different question.');
+}
+
+async function askSpeakerQuestion() {
+    const question = speakerRagInput ? speakerRagInput.value.trim() : '';
+    if (!question || !supabaseClient) return;
+
+    runRagPipeline(question, 'speaker-rag', async (query) => {
+        const { data: speakers, error } = await supabaseClient.rpc('find_speakers_in_question', {
+            question_text: query
+        });
+
+        if (error) throw new Error(`Speaker lookup failed: ${error.message}`);
+        if (!speakers || speakers.length === 0) {
+            return { skip: true, message: "Include a speaker's first and last name. No search was run." };
+        }
+        if (speakers.length > 1) {
+            return { skip: true, message: 'More than one speaker matched. Ask about one speaker at a time.' };
+        }
+
+        const speaker = speakers[0];
+        const embedding = await getEmbedding(query);
+        const results = await searchSentencesForSpeaker(
+            embedding,
+            speaker.first_name,
+            speaker.last_name
+        );
+        return { results };
+    }, 'No matching talks were found for that speaker and question.');
+}
+
+async function runRagPipeline(question, resultsType, retrieveResults, noResultsMessage) {
     showLoading(true);
-    clearResults('rag');
+    clearResults(resultsType);
 
     try {
-        // Step 1: Get embedding
-        const embedding = await getEmbedding(question);
-
-        // Step 2: Search for similar sentences
-        const results = await searchSentences(embedding, question);
-
-        if (!results || results.length === 0) {
-            showResults('rag', '<div class="no-results">No matching talk content found. Check the speaker name or try a different question.</div>');
+        const retrieval = await retrieveResults(question);
+        if (retrieval?.skip) {
+            showResults(resultsType, `<div class="no-results">${escapeHtml(retrieval.message)}</div>`);
             return;
         }
 
-        // Step 3: Group by talk (with similarity scores and URLs)
+        const results = Array.isArray(retrieval) ? retrieval : retrieval.results;
+        if (!results || results.length === 0) {
+            showResults(resultsType, `<div class="no-results">${escapeHtml(noResultsMessage)}</div>`);
+            return;
+        }
+
         const topTalks = groupByTalk(results);
-
-        // Step 4: Fetch full talk text for richer context
         const enrichedTalks = await fetchFullTalkText(topTalks);
-
-        // Step 5: Generate answer with full context
         const answer = await generateAnswer(question, enrichedTalks);
 
-        // Compute overall similarity (weighted avg across source talks)
-        const overallSimilarity = topTalks.reduce((sum, t) => sum + t.avgSimilarity, 0) / topTalks.length;
+        const overallSimilarity = topTalks.reduce((sum, talk) => sum + talk.avgSimilarity, 0) / topTalks.length;
         const overallBadge = similarityBadge(overallSimilarity);
         const simClass = overallSimilarity >= 0.70 ? 'similarity-high'
             : overallSimilarity >= 0.40 ? 'similarity-mid' : 'similarity-low';
@@ -560,7 +600,6 @@ async function askQuestion() {
             <div class="result-sentences">${escapeHtml(answer)}</div>
         </div>`;
 
-        // Show source talks with per-talk similarity badges and links
         html += '<div class="result-sources"><strong>Sources:</strong></div>';
         for (const talk of topTalks) {
             const talkBadge = similarityBadge(talk.avgSimilarity);
@@ -574,10 +613,9 @@ async function askQuestion() {
                 </div>
             </div>`;
         }
-        showResults('rag', html);
-
+        showResults(resultsType, html);
     } catch (error) {
-        showResults('rag', `<div class="result-error">Error: ${escapeHtml(error.message)}</div>`);
+        showResults(resultsType, `<div class="result-error">Error: ${escapeHtml(error.message)}</div>`);
     } finally {
         showLoading(false);
     }
@@ -611,6 +649,20 @@ async function searchSentences(embedding, question = null) {
     });
 
     if (error) throw new Error(`Database search failed: ${error.message}`);
+    return data;
+}
+
+async function searchSentencesForSpeaker(embedding, firstName, lastName) {
+    if (!supabaseClient) throw new Error('Supabase not configured');
+
+    const { data, error } = await supabaseClient.rpc('match_sentences_for_speaker', {
+        query_embedding: embedding,
+        match_count: 20,
+        speaker_first_name: firstName,
+        speaker_last_name: lastName
+    });
+
+    if (error) throw new Error(`Speaker-filtered search failed: ${error.message}`);
     return data;
 }
 
@@ -755,6 +807,12 @@ if (semanticInput) semanticInput.addEventListener('keypress', (e) => {
 if (ragBtn) ragBtn.addEventListener('click', askQuestion);
 if (ragInput) ragInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') askQuestion();
+});
+
+// Speaker-specific RAG
+if (speakerRagBtn) speakerRagBtn.addEventListener('click', askSpeakerQuestion);
+if (speakerRagInput) speakerRagInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') askSpeakerQuestion();
 });
 
 // ============================================

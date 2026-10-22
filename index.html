@@ -132,6 +132,21 @@
                     </div>
                     <div class="search-results" id="rag-results"></div>
                 </div>
+
+                <!-- Panel 4: Speaker-specific RAG -->
+                <div class="search-panel" id="speaker-rag-panel">
+                    <div class="panel-header">
+                        <h3>🎙️ Ask About a Speaker (RAG)</h3>
+                        <span class="status-badge not-ready" id="speaker-rag-status">🔴 Not Ready</span>
+                    </div>
+                    <p class="panel-description">Answers using talks by a speaker whose first and last name appear in your question. If no speaker is found, no search is run.</p>
+                    <div class="panel-input">
+                        <input type="text" id="speaker-rag-input" placeholder="What did Jane Smith teach about service?"
+                            autocomplete="off" disabled />
+                        <button id="speaker-rag-btn" class="btn-primary" disabled>Ask</button>
+                    </div>
+                    <div class="search-results" id="speaker-rag-results"></div>
+                </div>
             </div>
         </div>
     </div>

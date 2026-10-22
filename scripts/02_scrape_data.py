@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
+from speaker_names import parse_speaker_name
 
 
 YEARS_TO_SCRAPE = 5
@@ -106,6 +107,7 @@ def scrape_talk(talk_url, session):
 
     speaker_tag = soup.find("p", {"class": "author-name"})
     speaker = speaker_tag.text.strip() if speaker_tag else "Unknown"
+    first_name, middle_name, last_name = parse_speaker_name(speaker)
 
     calling_tag = soup.find("p", {"class": "author-role"})
     calling = calling_tag.text.strip() if calling_tag else ""
@@ -123,6 +125,9 @@ def scrape_talk(talk_url, session):
     return {
         "title": title,
         "speaker": speaker,
+        "first_name": first_name,
+        "middle_name": middle_name,
+        "last_name": last_name,
         "calling": calling,
         "year": year,
         "season": season,

@@ -33,6 +33,7 @@ import uuid
 
 from supabase import create_client
 from tqdm import tqdm
+from speaker_names import parse_speaker_name
 
 
 INPUT_FILE = os.path.join('scripts', 'output', 'talks.json')
@@ -75,11 +76,15 @@ def main():
     for talk in tqdm(talks, desc="Splitting"):
         talk_id = str(uuid.uuid4())
         sentences = split_into_sentences(talk['text'])
+        first_name, middle_name, last_name = parse_speaker_name(talk.get('speaker'))
         for i, sentence in enumerate(sentences, 1):
             sentence_records.append({
                 'talk_id': talk_id,
                 'title': talk['title'],
                 'speaker': talk['speaker'],
+                'first_name': first_name,
+                'middle_name': middle_name,
+                'last_name': last_name,
                 'calling': talk['calling'],
                 'year': int(talk['year']) if talk['year'] else None,
                 'season': talk['season'],
