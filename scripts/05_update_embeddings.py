@@ -31,6 +31,7 @@ from tqdm import tqdm
 
 INPUT_FILE = os.path.join('scripts', 'output', 'sentences_with_embeddings.json')
 BATCH_SIZE = 100
+EMBEDDING_DIMENSIONS = 512
 
 
 def load_config():
@@ -50,6 +51,17 @@ def main():
     print("Loading embeddings data...")
     with open(INPUT_FILE, 'r', encoding='utf-8') as f:
         records = json.load(f)
+
+    wrong_dimension_count = sum(
+        1 for record in records
+        if not isinstance(record.get('embedding'), list)
+        or len(record['embedding']) != EMBEDDING_DIMENSIONS
+    )
+    if wrong_dimension_count:
+        raise ValueError(
+            f'{wrong_dimension_count:,} records do not contain {EMBEDDING_DIMENSIONS}-dimension embeddings. '
+            'Regenerate them with scripts/04_embed_data.py before importing.'
+        )
 
     # Verify embeddings are present
     with_embeddings = sum(1 for r in records if r.get('embedding'))

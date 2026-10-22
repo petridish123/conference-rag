@@ -31,7 +31,7 @@ python scripts/04_embed_data.py
 
 This script:
 1. Reads `scripts/output/sentences.json`
-2. Calls OpenAI's `text-embedding-3-small` to generate a 1,536-dimensional vector for each sentence
+2. Calls OpenAI's `text-embedding-3-small` to generate a 512-dimensional vector for each sentence
 3. Saves results to `scripts/output/sentences_with_embeddings.json`
 4. Supports resuming if interrupted (your progress is saved!)
 
@@ -51,7 +51,7 @@ This reads the saved embeddings and updates each row in the database.
 ```
 "Faith is the assurance of things hoped for"
     ↓ OpenAI text-embedding-3-small
-[0.012, -0.034, 0.089, ... 1,536 dimensions]
+[0.012, -0.034, 0.089, ... 512 dimensions]
 ```
 
 Similar sentences produce similar vectors. This is what enables semantic search — finding content by **meaning** rather than exact keywords.

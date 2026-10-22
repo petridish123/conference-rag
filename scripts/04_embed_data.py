@@ -33,6 +33,7 @@ from tqdm import tqdm
 INPUT_FILE = os.path.join('scripts', 'output', 'sentences.json')
 OUTPUT_FILE = os.path.join('scripts', 'output', 'sentences_with_embeddings.json')
 BATCH_SIZE = 100
+EMBEDDING_DIMENSIONS = 512
 
 
 def load_secrets():
@@ -52,21 +53,30 @@ def main():
     print("=" * 60)
     print(f"Generating Embeddings for {len(records):,} Sentences")
     print("=" * 60)
-    print(f"   Model: text-embedding-3-small (1,536 dimensions)")
+    print(f"   Model: text-embedding-3-small ({EMBEDDING_DIMENSIONS} dimensions)")
     print(f"   Batch size: {BATCH_SIZE}\n")
 
-    # Check if there's a partial result we can resume from
+    # Resume only if the existing file uses the configured dimensions.
     already_embedded = 0
     if os.path.exists(OUTPUT_FILE):
         with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
             existing = json.load(f)
-        already_embedded = len(existing)
-        if already_embedded >= len(records):
-            print(f"✅ All {len(records):,} sentences already have embeddings in {OUTPUT_FILE}")
-            print(f"   Delete {OUTPUT_FILE} to re-generate.")
-            return
-        print(f"   ⏩ Resuming from sentence {already_embedded:,} (found partial output)")
-        records_to_embed = records[already_embedded:]
+        existing_dimensions_match = all(
+            isinstance(record.get('embedding'), list)
+            and len(record['embedding']) == EMBEDDING_DIMENSIONS
+            for record in existing
+        )
+        if existing_dimensions_match:
+            already_embedded = len(existing)
+            if already_embedded >= len(records):
+                print(f"✅ All {len(records):,} sentences already have {EMBEDDING_DIMENSIONS}-dimension embeddings in {OUTPUT_FILE}")
+                return
+            print(f"   ⏩ Resuming from sentence {already_embedded:,} (found partial output)")
+            records_to_embed = records[already_embedded:]
+        else:
+            print(f"   Existing output is not {EMBEDDING_DIMENSIONS}-dimensional; generating a fresh embedding file.")
+            existing = []
+            records_to_embed = records
     else:
         existing = []
         records_to_embed = records
@@ -85,7 +95,8 @@ def main():
         try:
             response = client.embeddings.create(
                 model='text-embedding-3-small',
-                input=batch_texts
+                input=batch_texts,
+                dimensions=EMBEDDING_DIMENSIONS
             )
 
             for record, item in zip(batch, response.data):

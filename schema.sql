@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS sentence_embeddings (
     url TEXT,
     sentence_num INTEGER,
     text TEXT NOT NULL,
-    embedding vector(1536),
+    embedding vector(512),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -63,11 +63,42 @@ SET first_name = parsed.first_name,
 FROM parsed_speakers AS parsed
 WHERE se.id = parsed.id;
 
+-- Migrate existing 1,536-dimensional vectors to 512 dimensions. The
+-- text-embedding-3-small API can return this shortened representation.
+-- Remove old RPC signatures first so the new 512-dimensional signatures
+-- do not remain as conflicting overloads.
+DROP FUNCTION IF EXISTS match_sentences(vector(1536), integer);
+DROP FUNCTION IF EXISTS match_sentences_by_question(vector(1536), integer, text);
+DROP FUNCTION IF EXISTS match_sentences_for_speaker(vector(1536), integer, text, text);
+
+DO $$
+DECLARE
+    current_embedding_type text;
+BEGIN
+    SELECT format_type(attribute.atttypid, attribute.atttypmod)
+    INTO current_embedding_type
+    FROM pg_attribute AS attribute
+    WHERE attribute.attrelid = 'public.sentence_embeddings'::regclass
+      AND attribute.attname = 'embedding'
+      AND NOT attribute.attisdropped;
+
+    IF current_embedding_type LIKE '%vector(1536)' THEN
+        DROP INDEX IF EXISTS public.sentence_embeddings_embedding_hnsw_idx;
+        ALTER TABLE public.sentence_embeddings
+            ALTER COLUMN embedding TYPE vector(512)
+            USING subvector(embedding, 1, 512)::vector(512);
+    ELSIF current_embedding_type NOT LIKE '%vector(512)' THEN
+        RAISE EXCEPTION 'Expected sentence_embeddings.embedding to be vector(1536) or vector(512), found %',
+            current_embedding_type;
+    END IF;
+END;
+$$;
+
 -- Create index for talk_id grouping
 CREATE INDEX IF NOT EXISTS sentence_embeddings_talk_id_idx 
 ON sentence_embeddings(talk_id);
 
--- Accelerate cosine-distance searches used by match_sentences().
+-- Accelerate cosine-distance searches used by the match_sentences functions.
 CREATE INDEX IF NOT EXISTS sentence_embeddings_embedding_hnsw_idx
 ON sentence_embeddings USING hnsw (embedding vector_cosine_ops);
 
@@ -112,7 +143,7 @@ USING (true);
 
 -- Create function for similarity search
 CREATE OR REPLACE FUNCTION match_sentences(
-  query_embedding vector(1536),
+  query_embedding vector(512),
   match_count int DEFAULT 20
 )
 RETURNS TABLE (
@@ -141,7 +172,7 @@ $$;
 -- Similarity search for RAG that narrows results when the question
 -- contains a speaker's first and last names. Middle names are ignored.
 CREATE OR REPLACE FUNCTION match_sentences_by_question(
-  query_embedding vector(1536),
+  query_embedding vector(512),
   match_count int DEFAULT 20,
   question_text text DEFAULT NULL
 )
@@ -236,7 +267,7 @@ $$;
 -- Strict vector search for a resolved speaker. Unlike the general RAG
 -- function, this never falls back to results from other speakers.
 CREATE OR REPLACE FUNCTION match_sentences_for_speaker(
-  query_embedding vector(1536),
+  query_embedding vector(512),
   match_count int,
   speaker_first_name text,
   speaker_last_name text

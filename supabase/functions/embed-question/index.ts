@@ -3,6 +3,7 @@ import { handleCorsPreflightRequest, jsonResponse } from "../_shared/cors.ts";
 
 const OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
 const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_DIMENSIONS = 512;
 const MAX_QUESTION_LENGTH = 8_000;
 
 Deno.serve(async (request: Request): Promise<Response> => {
@@ -63,7 +64,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
         Authorization: `Bearer ${openAiApiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: EMBEDDING_MODEL, input: normalizedQuestion }),
+      body: JSON.stringify({
+        model: EMBEDDING_MODEL,
+        input: normalizedQuestion,
+        dimensions: EMBEDDING_DIMENSIONS,
+      }),
     });
   } catch (error) {
     console.error("Could not reach the OpenAI embeddings API:", error);
@@ -80,7 +85,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   try {
     const result = await openAiResponse.json();
     const embedding = result?.data?.[0]?.embedding;
-    if (!Array.isArray(embedding) || embedding.length === 0) {
+    if (!Array.isArray(embedding) || embedding.length !== EMBEDDING_DIMENSIONS) {
       console.error("OpenAI returned an unexpected embeddings response.");
       return jsonResponse({ error: "The embedding service returned an invalid response." }, {
         status: 502,
