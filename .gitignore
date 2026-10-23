@@ -46,3 +46,4 @@ config.secret.json
 
 # Intermediate data outputs
 scripts/output/
+secrets.json
